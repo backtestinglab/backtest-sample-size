@@ -1,0 +1,27 @@
+{
+  "name": "backtest-sample-size",
+  "version": "1.0.0",
+  "description": "The sample-size math behind \"How many trades should you backtest?\" at thebacktestinglab.com",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://thebacktestinglab.com/tools/how-many-trades-should-you-backtest/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/backtestinglab/backtest-sample-size.git"
+  },
+  "main": "dist/sampleSize.js",
+  "types": "dist/sampleSize.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  },
+  "packageManager": "yarn@1.22.19+sha1.4ba7fc5c6e704fce2066ecbfb0b0d8976fe62447"
+}

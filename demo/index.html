@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>backtest-sample-size demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #1a1a1a;
+        --muted: #6b6b6b;
+        --grid: #e3e3e3;
+        --band: rgba(37, 99, 235, 0.18);
+        --edge: #2563eb;
+        --marker: #111111;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #121212;
+          --fg: #ececec;
+          --muted: #9a9a9a;
+          --grid: #2c2c2c;
+          --band: rgba(96, 165, 250, 0.22);
+          --edge: #60a5fa;
+          --marker: #ffffff;
+        }
+      }
+      body {
+        margin: 0 auto;
+        max-width: 860px;
+        padding: 24px 16px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 15px/1.5 system-ui, sans-serif;
+      }
+      h1 { font-size: 1.3rem; margin: 0 0 4px; }
+      p { margin: 0 0 16px; color: var(--muted); }
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px 24px;
+        margin-bottom: 16px;
+      }
+      label { display: grid; gap: 4px; font-size: 0.9rem; }
+      output { font-weight: 600; }
+      .readout { font-size: 1.05rem; margin-bottom: 8px; }
+      svg { width: 100%; height: auto; display: block; }
+      .grid line { stroke: var(--grid); }
+      .grid text { fill: var(--muted); font-size: 11px; }
+      .band { fill: var(--band); }
+      .edge { fill: none; stroke: var(--edge); stroke-width: 1.5; }
+      .marker { stroke: var(--marker); stroke-width: 1.5; }
+    </style>
+  </head>
+  <body>
+    <h1>How many trades should you backtest?</h1>
+    <p>
+      A minimal demo of <code>sampleSize.ts</code>. The full interactive tool lives at
+      <a href="https://thebacktestinglab.com/tools/how-many-trades-should-you-backtest/"
+        >thebacktestinglab.com</a
+      >.
+    </p>
+
+    <div class="controls">
+      <label>True win rate: <output id="wr-out"></output>
+        <input id="wr" type="range" step="1" />
+      </label>
+      <label>Confidence
+        <select id="conf"></select>
+      </label>
+      <label>Trades: <output id="n-out"></output>
+        <input id="n" type="range" min="0" max="1000" step="1" />
+      </label>
+    </div>
+
+    <div class="readout" id="readout"></div>
+    <svg id="chart" viewBox="0 0 800 420" role="img" aria-label="Win-rate band narrowing with sample size"></svg>
+
+    <script type="module">
+      import {
+        N_MIN, N_MAX, N_TICKS,
+        WIN_RATE_MIN, WIN_RATE_MAX, WIN_RATE_DEFAULT,
+        CONFIDENCE_DEFAULT, CONFIDENCE_PRESETS,
+        zFor, band, requiredSampleSize, axisRangeFor, winRateTicks,
+        makeGeometry, bandPaths,
+      } from '../dist/sampleSize.js';
+
+      const $ = (id) => document.getElementById(id);
+      const wr = $('wr'), conf = $('conf'), nSlider = $('n'), chart = $('chart');
+
+      wr.min = WIN_RATE_MIN; wr.max = WIN_RATE_MAX; wr.value = WIN_RATE_DEFAULT;
+      for (const c of CONFIDENCE_PRESETS) conf.add(new Option(`${c}%`, c, false, c === CONFIDENCE_DEFAULT));
+
+      // The trades slider runs on a log scale, like the chart's axis.
+      const sliderToN = (v) => Math.round(N_MIN * Math.pow(N_MAX / N_MIN, v / 1000));
+      nSlider.value = Math.round((1000 * Math.log(100 / N_MIN)) / Math.log(N_MAX / N_MIN));
+
+      function render() {
+        const winRate = Number(wr.value);
+        const z = zFor(Number(conf.value));
+        const n = sliderToN(Number(nSlider.value));
+        const { moe, lo, hi } = band(winRate, n, z);
+
+        $('wr-out').textContent = `${winRate}%`;
+        $('n-out').textContent = n;
+        $('readout').textContent =
+          `With ${n} trades, a ${winRate}% strategy could measure anywhere from ` +
+          `${lo.toFixed(1)}% to ${hi.toFixed(1)}% (±${moe.toFixed(1)} points). ` +
+          `±5 points needs ${requiredSampleSize(winRate, 5, z)} trades.`;
+
+        const axis = axisRangeFor(winRate, z);
+        const geom = makeGeometry(800, 420, { top: 16, right: 16, bottom: 32, left: 44 }, 'horizontal', axis);
+        const { plot } = geom;
+        const paths = bandPaths(geom, winRate, z);
+
+        let grid = '';
+        for (const t of N_TICKS) {
+          const x = geom.nToPos(t);
+          grid += `<line x1="${x}" y1="${plot.y0}" x2="${x}" y2="${plot.y1}"/>` +
+            `<text x="${x}" y="${plot.y1 + 18}" text-anchor="middle">${t}</text>`;
+        }
+        for (const t of winRateTicks(axis)) {
+          const y = geom.pctToPos(t);
+          grid += `<line x1="${plot.x0}" y1="${y}" x2="${plot.x1}" y2="${y}"/>` +
+            `<text x="${plot.x0 - 8}" y="${y + 4}" text-anchor="end">${t}%</text>`;
+        }
+
+        const [mx, my1] = geom.point(n, hi);
+        const [, my2] = geom.point(n, lo);
+        chart.innerHTML =
+          `<g class="grid">${grid}</g>` +
+          `<path class="band" d="${paths.fill}"/>` +
+          `<path class="edge" d="${paths.upper}"/>` +
+          `<path class="edge" d="${paths.lower}"/>` +
+          `<line class="marker" x1="${mx}" y1="${my1}" x2="${mx}" y2="${my2}"/>`;
+      }
+
+      for (const el of [wr, conf, nSlider]) el.addEventListener('input', render);
+      render();
+    </script>
+  </body>
+</html>
